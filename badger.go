@@ -16,12 +16,11 @@ import (
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
 	"github.com/blevesearch/bleve/v2/search"
-	badgerdb "github.com/dgraph-io/badger"
-	"github.com/gosexy/to"
+	badgerdb "github.com/dgraph-io/badger/v4"
 	log "github.com/mgutz/logxi/v1"
-	"github.com/osiloke/gostore"
-	"github.com/osiloke/gostore-contrib/common"
-	"github.com/osiloke/gostore-contrib/indexer"
+	common "github.com/osiloke/gostore-common"
+	indexer "github.com/osiloke/gostore-indexer"
+	"github.com/xiam/to"
 )
 
 var logger = log.New("gostore-contrib.badger")
@@ -272,12 +271,12 @@ func (s *BadgerStore) GetStore() interface{} {
 }
 
 // UpdateTransaction starts an update transaction
-func (s *BadgerStore) UpdateTransaction() gostore.Transaction {
+func (s *BadgerStore) UpdateTransaction() common.Transaction {
 	return &BadgerTransaction{s.Db, s.Db.NewTransaction(true), "update"}
 }
 
 // FinishTransaction ebds transaction
-func (s *BadgerStore) FinishTransaction(tx gostore.Transaction) error {
+func (s *BadgerStore) FinishTransaction(tx common.Transaction) error {
 	return tx.Commit()
 }
 
@@ -307,12 +306,12 @@ func (s *BadgerStore) _Get(key, store string) ([][]byte, error) {
 	})
 	if err != nil {
 		if err == badgerdb.ErrKeyNotFound {
-			return nil, gostore.ErrNotFound
+			return nil, common.ErrNotFound
 		}
 		return nil, err
 	}
 	if len(val) == 0 {
-		return nil, gostore.ErrNotFound
+		return nil, common.ErrNotFound
 	}
 	logger.Debug("_Get success", "key", key, "storeKey", k)
 	data := make([][]byte, 2)
@@ -430,7 +429,7 @@ func (s *BadgerStore) _Delete(key, store string) error {
 	})
 	if err != nil {
 		if err == badgerdb.ErrKeyNotFound {
-			return gostore.ErrNotFound
+			return common.ErrNotFound
 		}
 		return err
 	}
@@ -450,7 +449,7 @@ func (s *BadgerStore) _Save(key, store string, data []byte) error {
 // All gets all entries in a store
 // a gouritine which holds open a db view transaction and then listens on
 // a channel for getting the next row itr. There is also a timeout to prevent long running routines
-func (s *BadgerStore) All(count int, skip int, store string) (gostore.ObjectRows, error) {
+func (s *BadgerStore) All(count int, skip int, store string) (common.ObjectRows, error) {
 	var objs [][][]byte
 	err := s.Db.View(func(txn *badgerdb.Txn) error {
 		opts := badgerdb.DefaultIteratorOptions
@@ -478,19 +477,19 @@ func (s *BadgerStore) All(count int, skip int, store string) (gostore.ObjectRows
 	if len(objs) > 0 {
 		return &TransactionRows{entries: objs, length: len(objs)}, err
 	}
-	return nil, gostore.ErrNotFound
+	return nil, common.ErrNotFound
 }
 
 func (s *BadgerStore) GetAll(count int, skip int, bucket []string) (objs [][][]byte, err error) {
-	return nil, gostore.ErrNotImplemented
+	return nil, common.ErrNotImplemented
 }
 
 func (s *BadgerStore) _Filter(prefix []byte, count int, skip int, resource string) (objs [][][]byte, err error) {
-	return nil, gostore.ErrNotImplemented
+	return nil, common.ErrNotImplemented
 }
 
 func (s *BadgerStore) FilterSuffix(suffix []byte, count int, resource string) (objs [][]byte, err error) {
-	return nil, gostore.ErrNotImplemented
+	return nil, common.ErrNotImplemented
 }
 
 func (s *BadgerStore) StreamFilter(key []byte, count int, resource string) chan []byte {
@@ -515,20 +514,20 @@ func (s *BadgerStore) Cursor() (common.Iterator, error) {
 	return &rv, nil
 }
 
-func (s *BadgerStore) AllCursor(store string) (gostore.ObjectRows, error) {
-	return nil, gostore.ErrNotImplemented
+func (s *BadgerStore) AllCursor(store string) (common.ObjectRows, error) {
+	return nil, common.ErrNotImplemented
 }
 
 func (s *BadgerStore) Stream() (*common.CursorRows, error) {
-	return nil, gostore.ErrNotImplemented
+	return nil, common.ErrNotImplemented
 }
 
-func (s *BadgerStore) AllWithinRange(filter map[string]interface{}, count int, skip int, store string, opts gostore.ObjectStoreOptions) (gostore.ObjectRows, error) {
-	return nil, gostore.ErrNotImplemented
+func (s *BadgerStore) AllWithinRange(filter map[string]interface{}, count int, skip int, store string, opts common.ObjectStoreOptions) (common.ObjectRows, error) {
+	return nil, common.ErrNotImplemented
 }
 
 // Since get items after a key
-func (s *BadgerStore) Since(id string, count int, skip int, store string) (gostore.ObjectRows, error) {
+func (s *BadgerStore) Since(id string, count int, skip int, store string) (common.ObjectRows, error) {
 	var objs [][][]byte
 	err := s.Db.View(func(txn *badgerdb.Txn) error {
 		opts := badgerdb.DefaultIteratorOptions
@@ -556,7 +555,7 @@ func (s *BadgerStore) Since(id string, count int, skip int, store string) (gosto
 }
 
 // Before Get all recent items from a key
-func (s *BadgerStore) Before(id string, count int, skip int, store string) (gostore.ObjectRows, error) {
+func (s *BadgerStore) Before(id string, count int, skip int, store string) (common.ObjectRows, error) {
 	var objs [][][]byte
 	err := s.Db.View(func(txn *badgerdb.Txn) error {
 		opts := badgerdb.DefaultIteratorOptions
@@ -584,14 +583,14 @@ func (s *BadgerStore) Before(id string, count int, skip int, store string) (gost
 	return &TransactionRows{entries: objs, length: len(objs)}, err
 } //Get all existing items before a key
 
-func (s *BadgerStore) FilterSince(id string, filter map[string]interface{}, count int, skip int, store string, opts gostore.ObjectStoreOptions) (gostore.ObjectRows, error) {
-	return nil, gostore.ErrNotImplemented
+func (s *BadgerStore) FilterSince(id string, filter map[string]interface{}, count int, skip int, store string, opts common.ObjectStoreOptions) (common.ObjectRows, error) {
+	return nil, common.ErrNotImplemented
 } //Get all recent items from a key
-func (s *BadgerStore) FilterBefore(id string, filter map[string]interface{}, count int, skip int, store string, opts gostore.ObjectStoreOptions) (gostore.ObjectRows, error) {
-	return nil, gostore.ErrNotImplemented
+func (s *BadgerStore) FilterBefore(id string, filter map[string]interface{}, count int, skip int, store string, opts common.ObjectStoreOptions) (common.ObjectRows, error) {
+	return nil, common.ErrNotImplemented
 } //Get all existing items before a key
-func (s *BadgerStore) FilterBeforeCount(id string, filter map[string]interface{}, count int, skip int, store string, opts gostore.ObjectStoreOptions) (int64, error) {
-	return 0, gostore.ErrNotImplemented
+func (s *BadgerStore) FilterBeforeCount(id string, filter map[string]interface{}, count int, skip int, store string, opts common.ObjectStoreOptions) (int64, error) {
+	return 0, common.ErrNotImplemented
 } //Get all existing items before a key
 
 func (s *BadgerStore) Get(key string, store string, dst interface{}) error {
@@ -670,7 +669,7 @@ func (s *BadgerStore) SaveWithGeo(key, store string, src interface{}, field stri
 }
 
 // SaveWithGeoTX save a key within a transaction
-func (s *BadgerStore) SaveWithGeoTX(key, store string, src interface{}, field string, txn gostore.Transaction) error {
+func (s *BadgerStore) SaveWithGeoTX(key, store string, src interface{}, field string, txn common.Transaction) error {
 	if srcMap, ok := src.(map[string]interface{}); ok {
 		skey := s.keyForTableId(store, key)
 		storeKey := []byte(skey)
@@ -707,7 +706,7 @@ func (s *BadgerStore) SaveWithGeoTX(key, store string, src interface{}, field st
 }
 
 // SaveTX save a key within a transaction
-func (s *BadgerStore) SaveTX(key, store string, src interface{}, txn gostore.Transaction) error {
+func (s *BadgerStore) SaveTX(key, store string, src interface{}, txn common.Transaction) error {
 	data, err := json.Marshal(src)
 	if err != nil {
 		return err
@@ -724,7 +723,7 @@ func (s *BadgerStore) SaveTX(key, store string, src interface{}, txn gostore.Tra
 }
 
 // GetTX get a key within a transaction
-func (s *BadgerStore) GetTX(key string, store string, dst interface{}, txn gostore.Transaction) error {
+func (s *BadgerStore) GetTX(key string, store string, dst interface{}, txn common.Transaction) error {
 	k := s.keyForTableId(store, key)
 	storeKey := []byte(k)
 	var val []byte
@@ -733,7 +732,7 @@ func (s *BadgerStore) GetTX(key string, store string, dst interface{}, txn gosto
 		return err
 	}
 	if len(val) == 0 {
-		return gostore.ErrNotFound
+		return common.ErrNotFound
 	}
 	logger.Debug("GetTX success", "key", key, "storeKey", k)
 	data := make([][]byte, 2)
@@ -746,10 +745,10 @@ func (s *BadgerStore) GetTX(key string, store string, dst interface{}, txn gosto
 }
 
 func (s *BadgerStore) SaveAll(store string, src ...interface{}) (keys []string, err error) {
-	return nil, gostore.ErrNotImplemented
+	return nil, common.ErrNotImplemented
 }
 func (s *BadgerStore) Update(key string, store string, src interface{}) error {
-	return gostore.ErrNotImplemented
+	return common.ErrNotImplemented
 	// //get existing
 	// var existing map[string]interface{}
 	// if err := s.Get(key, store, &existing); err != nil {
@@ -778,10 +777,10 @@ func (s *BadgerStore) Replace(key string, store string, src interface{}) error {
 	_, err := s.Save(key, store, src)
 	return err
 }
-func (s *BadgerStore) ReplaceTX(key string, store string, src interface{}, tx gostore.Transaction) error {
+func (s *BadgerStore) ReplaceTX(key string, store string, src interface{}, tx common.Transaction) error {
 	return s.SaveTX(key, store, src, tx)
 }
-func (s *BadgerStore) DeleteTX(key string, store string, tx gostore.Transaction) error {
+func (s *BadgerStore) DeleteTX(key string, store string, tx common.Transaction) error {
 	skey := s.keyForTableId(store, key)
 	storeKey := []byte(skey)
 	logger.Info("DeleteTX", "key", key)
@@ -792,13 +791,13 @@ func (s *BadgerStore) Delete(key string, store string) error {
 }
 
 // Filter
-func (s *BadgerStore) FilterUpdate(filter map[string]interface{}, src interface{}, store string, opts gostore.ObjectStoreOptions) error {
-	return gostore.ErrNotImplemented
+func (s *BadgerStore) FilterUpdate(filter map[string]interface{}, src interface{}, store string, opts common.ObjectStoreOptions) error {
+	return common.ErrNotImplemented
 }
-func (s *BadgerStore) FilterReplace(filter map[string]interface{}, src interface{}, store string, opts gostore.ObjectStoreOptions) error {
-	return gostore.ErrNotImplemented
+func (s *BadgerStore) FilterReplace(filter map[string]interface{}, src interface{}, store string, opts common.ObjectStoreOptions) error {
+	return common.ErrNotImplemented
 }
-func (s *BadgerStore) FilterGet(filter map[string]interface{}, store string, dst interface{}, opts gostore.ObjectStoreOptions) error {
+func (s *BadgerStore) FilterGet(filter map[string]interface{}, store string, dst interface{}, opts common.ObjectStoreOptions) error {
 	logger.Info("FilterGet", "filter", filter, "Store", store, "opts", opts)
 	if query, ok := filter["q"].(map[string]interface{}); ok {
 		//check if filter contains a nested field which is used to traverse a sub bucket
@@ -816,7 +815,7 @@ func (s *BadgerStore) FilterGet(filter map[string]interface{}, store string, dst
 		logger.Info("FilterGet success", "query", query)
 		if res.Total == 0 {
 			logger.Info("FilterGet empty result", "result", res.String())
-			return gostore.ErrNotFound
+			return common.ErrNotFound
 		}
 		data, err = s._Get(res.Hits[0].ID, store)
 		if err != nil {
@@ -826,10 +825,10 @@ func (s *BadgerStore) FilterGet(filter map[string]interface{}, store string, dst
 		err = json.Unmarshal(data[1], dst)
 		return err
 	}
-	return gostore.ErrNotFound
+	return common.ErrNotFound
 
 }
-func (s *BadgerStore) FilterGetTX(filter map[string]interface{}, store string, dst interface{}, opts gostore.ObjectStoreOptions, tx gostore.Transaction) error {
+func (s *BadgerStore) FilterGetTX(filter map[string]interface{}, store string, dst interface{}, opts common.ObjectStoreOptions, tx common.Transaction) error {
 	logger.Info("FilterGetTX", "filter", filter, "Store", store, "opts", opts)
 	if query, ok := filter["q"].(map[string]interface{}); ok {
 		//check if filter contains a nested field which is used to traverse a sub bucket
@@ -843,7 +842,7 @@ func (s *BadgerStore) FilterGetTX(filter map[string]interface{}, store string, d
 		logger.Info("FilterGetTX success", "query", query)
 		if res.Total == 0 {
 			logger.Info("FilterGetTX empty result", "result", res.String())
-			return gostore.ErrNotFound
+			return common.ErrNotFound
 		}
 		key := res.Hits[0].ID
 		k := s.keyForTableId(store, key)
@@ -856,12 +855,12 @@ func (s *BadgerStore) FilterGetTX(filter map[string]interface{}, store string, d
 		err = json.Unmarshal(data, dst)
 		return err
 	}
-	return gostore.ErrNotFound
+	return common.ErrNotFound
 
 }
 
 // FilterGetAll allows you to filter a store if an indexer exists
-func (s *BadgerStore) FilterGetAll(filter map[string]interface{}, count int, skip int, store string, opts gostore.ObjectStoreOptions) (gostore.ObjectRows, error) {
+func (s *BadgerStore) FilterGetAll(filter map[string]interface{}, count int, skip int, store string, opts common.ObjectStoreOptions) (common.ObjectRows, error) {
 	if query, ok := filter["q"].(map[string]interface{}); ok {
 		q := indexer.GetQueryString(store, query)
 		logger.Info("FilterGetAll", "count", count, "skip", skip, "Store", store, "query", q)
@@ -871,19 +870,19 @@ func (s *BadgerStore) FilterGetAll(filter map[string]interface{}, count int, ski
 			return nil, err
 		}
 		if res.Total == 0 {
-			return nil, gostore.ErrNotFound
+			return nil, common.ErrNotFound
 		}
 		// return NewIndexedBadgerRows(store, res.Total, res, &s), nil
 		return &SyncIndexRows{name: store, length: res.Total, result: res, bs: s}, nil
 	}
-	return nil, gostore.ErrNotFound
+	return nil, common.ErrNotFound
 }
 
-func (s *BadgerStore) Query(query, aggregates map[string]interface{}, count int, skip int, store string, opts gostore.ObjectStoreOptions) (gostore.ObjectRows, gostore.AggregateResult, error) {
+func (s *BadgerStore) Query(query, aggregates map[string]interface{}, count int, skip int, store string, opts common.ObjectStoreOptions) (common.ObjectRows, common.AggregateResult, error) {
 	if len(query) > 0 {
 		var err error
 		var res *bleve.SearchResult
-		agg := gostore.AggregateResult{}
+		agg := common.AggregateResult{}
 		q := indexer.GetQueryString(store, query)
 		var order indexer.RequestOpt
 		order = indexer.OrderRequest([]string{"-_score", "-_id"})
@@ -952,7 +951,7 @@ func (s *BadgerStore) Query(query, aggregates map[string]interface{}, count int,
 					// for i, n := range v.NumericRanges{
 					// 	numericRanges[i] = map[string]interface{}{"field": n.Name, "min": n.Min, "max": n.Max, "count": n.Count}
 					// }
-					agg[k] = gostore.Match{
+					agg[k] = common.Match{
 						NumberRange: v.NumericRanges,
 						Field:       strings.SplitN(v.Field, ".", 2)[1],
 						Matched:     v.Total,
@@ -961,7 +960,7 @@ func (s *BadgerStore) Query(query, aggregates map[string]interface{}, count int,
 						DateRange:   search.DateRangeFacet{},
 					}
 				} else {
-					agg[k] = gostore.Match{
+					agg[k] = common.Match{
 						Top:       v.Terms,
 						Field:     strings.SplitN(v.Field, ".", 2)[1],
 						Matched:   v.Total,
@@ -972,16 +971,16 @@ func (s *BadgerStore) Query(query, aggregates map[string]interface{}, count int,
 			}
 		}
 		if res.Total == 0 {
-			return nil, agg, gostore.ErrNotFound
+			return nil, agg, common.ErrNotFound
 		}
 
 		return &SyncIndexRows{name: store, length: res.Total, result: res, bs: s}, agg, err
 	}
-	return nil, nil, gostore.ErrNotFound
+	return nil, nil, common.ErrNotFound
 }
 
 // GeoQuery query a geocapable indexer
-func (s *BadgerStore) GeoQuery(lon, lat float64, distance string, query map[string]interface{}, count int, skip int, store string, opts gostore.ObjectStoreOptions) (gostore.ObjectRows, error) {
+func (s *BadgerStore) GeoQuery(lon, lat float64, distance string, query map[string]interface{}, count int, skip int, store string, opts common.ObjectStoreOptions) (common.ObjectRows, error) {
 
 	var err error
 	var res *bleve.SearchResult
@@ -994,28 +993,27 @@ func (s *BadgerStore) GeoQuery(lon, lat float64, distance string, query map[stri
 	if geoIndexer, ok := s.Indexer.(indexer.GeoCapableIndexer); ok {
 		res, err = geoIndexer.GeoDistanceQuery(q, lon, lat, distance, count, skip, true, []string{}, indexer.OrderRequest([]string{"-_score", "-_id"}))
 	} else {
-		return nil, gostore.ErrNotImplemented
+		return nil, common.ErrNotImplemented
 	}
 	if err != nil {
 		logger.Warn("err", "error", err)
 		return nil, err
 	}
 	if res.Total == 0 {
-		return nil, gostore.ErrNotFound
+		return nil, common.ErrNotFound
 	}
 
 	return &SyncIndexRows{name: store, length: res.Total, result: res, bs: s}, err
 }
 
 // FilterDelete filter delete items
-func (s *BadgerStore) FilterDelete(query map[string]interface{}, store string, opts gostore.ObjectStoreOptions) error {
+func (s *BadgerStore) FilterDelete(query map[string]interface{}, store string, opts common.ObjectStoreOptions) error {
 	logger.Info("FilterDelete", "filter", query, "store", store)
 	count := 1000
-	res, err := s.Indexer.Query(indexer.GetQueryString(store, query))
-	res, err = s.Indexer.QueryWithOptions(indexer.GetQueryString(store, query), count, 0, true, []string{})
+	res, err := s.Indexer.QueryWithOptions(indexer.GetQueryString(store, query), count, 0, true, []string{})
 	if err == nil {
 		if res.Total == 0 {
-			return gostore.ErrNotFound
+			return common.ErrNotFound
 		}
 		for _, v := range res.Hits {
 			err = s._Delete(v.ID, store)
@@ -1031,31 +1029,31 @@ func (s *BadgerStore) FilterDelete(query map[string]interface{}, store string, o
 	return err
 }
 
-func (s *BadgerStore) FilterCount(filter map[string]interface{}, store string, opts gostore.ObjectStoreOptions) (int64, error) {
+func (s *BadgerStore) FilterCount(filter map[string]interface{}, store string, opts common.ObjectStoreOptions) (int64, error) {
 	if query, ok := filter["q"].(map[string]interface{}); ok {
 		res, err := s.Indexer.Query(indexer.GetQueryString(store, query))
 		if err != nil {
 			return 0, err
 		}
 		if res.Total == 0 {
-			return 0, gostore.ErrNotFound
+			return 0, common.ErrNotFound
 		}
 		return int64(res.Total), nil
 	}
-	return 0, gostore.ErrNotFound
+	return 0, common.ErrNotFound
 }
 
 // Misc gets
 func (s *BadgerStore) GetByField(name, val, store string, dst interface{}) error { return nil }
 func (s *BadgerStore) GetByFieldsByField(name, val, store string, fields []string, dst interface{}) (err error) {
-	return gostore.ErrNotImplemented
+	return common.ErrNotImplemented
 }
 
-func (s *BadgerStore) BatchDelete(ids []interface{}, store string, opts gostore.ObjectStoreOptions) (err error) {
-	return gostore.ErrNotImplemented
+func (s *BadgerStore) BatchDelete(ids []interface{}, store string, opts common.ObjectStoreOptions) (err error) {
+	return common.ErrNotImplemented
 }
 
-func (s *BadgerStore) BatchUpdate(id []interface{}, data []interface{}, store string, opts gostore.ObjectStoreOptions) (err error) {
+func (s *BadgerStore) BatchUpdate(id []interface{}, data []interface{}, store string, opts common.ObjectStoreOptions) (err error) {
 	// keys = make([]string, len(data))
 	b := s.Indexer.BatchIndex()
 	err = s.Db.Update(func(txn *badgerdb.Txn) error {
@@ -1065,13 +1063,13 @@ func (s *BadgerStore) BatchUpdate(id []interface{}, data []interface{}, store st
 				if k, ok := _v["id"].(string); ok {
 					key = k
 				} else {
-					key = gostore.NewObjectId().String()
+					key = common.NewObjectId().String()
 					_v["id"] = key
 				}
 			} else if _v, ok := src.(HasID); ok {
 				key = _v.GetId()
 			} else {
-				key = gostore.NewObjectId().String()
+				key = common.NewObjectId().String()
 			}
 			data, err := json.Marshal(src)
 			if err != nil {
@@ -1091,44 +1089,13 @@ func (s *BadgerStore) BatchUpdate(id []interface{}, data []interface{}, store st
 	return
 }
 
-func (s *BadgerStore) BatchFilterDelete(filter []map[string]interface{}, store string, opts gostore.ObjectStoreOptions) error {
-	return gostore.ErrNotImplemented
+func (s *BadgerStore) BatchFilterDelete(filter []map[string]interface{}, store string, opts common.ObjectStoreOptions) error {
+	return common.ErrNotImplemented
 }
 
-func (s *BadgerStore) BatchInsert(data []interface{}, store string, opts gostore.ObjectStoreOptions) (keys []string, err error) {
+func (s *BadgerStore) BatchInsert(data []interface{}, store string, opts common.ObjectStoreOptions) (keys []string, err error) {
 	keys = make([]string, len(data))
 	b := s.Indexer.BatchIndex()
-	// err = s.Db.Update(func(txn *badgerdb.Txn) error {
-	// 	for i, src := range data {
-	// 		var key string
-	// 		if _v, ok := src.(map[string]interface{}); ok {
-	// 			if k, ok := _v["id"].(string); ok {
-	// 				key = k
-	// 			} else {
-	// 				key = gostore.NewObjectId().String()
-	// 				_v["id"] = key
-	// 			}
-	// 		} else if _v, ok := src.(HasID); ok {
-	// 			key = _v.GetId()
-	// 		} else {
-	// 			key = gostore.NewObjectId().String()
-	// 		}
-	// 		data, err := json.Marshal(src)
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	// 		storeKey := []byte(s.keyForTableId(store, key))
-	// 		err = txn.Set(storeKey, data)
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	// 		indexedData := IndexedData{store, src}
-	// 		logger.Debug("BatchInsert", "row", indexedData)
-	// 		b.Index(key, indexedData)
-	// 		keys[i] = key
-	// 	}
-	// 	return s.Indexer.Batch(b)
-	// })
 	txn := s.Db.NewTransaction(true)
 	defer txn.Discard()
 	for i, src := range data {
@@ -1137,13 +1104,13 @@ func (s *BadgerStore) BatchInsert(data []interface{}, store string, opts gostore
 			if k, ok := _v["id"].(string); ok {
 				key = k
 			} else {
-				key = gostore.NewObjectId().String()
+				key = common.NewObjectId().String()
 				_v["id"] = key
 			}
 		} else if _v, ok := src.(HasID); ok {
 			key = _v.GetId()
 		} else {
-			key = gostore.NewObjectId().String()
+			key = common.NewObjectId().String()
 		}
 		data, err := json.Marshal(src)
 		if err != nil {
@@ -1166,7 +1133,7 @@ func (s *BadgerStore) BatchInsert(data []interface{}, store string, opts gostore
 	return
 }
 
-func (s *BadgerStore) BatchInsertTX(data []interface{}, store string, opts gostore.ObjectStoreOptions, txn gostore.Transaction) (keys []string, err error) {
+func (s *BadgerStore) BatchInsertTX(data []interface{}, store string, opts common.ObjectStoreOptions, txn common.Transaction) (keys []string, err error) {
 	keys = make([]string, len(data))
 	b := s.Indexer.BatchIndex()
 	for i, src := range data {
@@ -1175,13 +1142,13 @@ func (s *BadgerStore) BatchInsertTX(data []interface{}, store string, opts gosto
 			if k, ok := _v["id"].(string); ok {
 				key = k
 			} else {
-				key = gostore.NewObjectId().String()
+				key = common.NewObjectId().String()
 				_v["id"] = key
 			}
 		} else if _v, ok := src.(HasID); ok {
 			key = _v.GetId()
 		} else {
-			key = gostore.NewObjectId().String()
+			key = common.NewObjectId().String()
 		}
 		data, err := json.Marshal(src)
 		if err != nil {
@@ -1207,7 +1174,7 @@ func (s *BadgerStore) BatchInsertTX(data []interface{}, store string, opts gosto
 	return
 }
 
-func (s *BadgerStore) BatchInsertKVAndIndex(rows [][][]byte, store string, opts gostore.ObjectStoreOptions) (keys []string, err error) {
+func (s *BadgerStore) BatchInsertKVAndIndex(rows [][][]byte, store string, opts common.ObjectStoreOptions) (keys []string, err error) {
 	keys = make([]string, len(rows))
 	err = s.Db.Update(func(txn *badgerdb.Txn) error {
 		b := s.Indexer.BatchIndex()
@@ -1233,7 +1200,7 @@ func (s *BadgerStore) BatchInsertKVAndIndex(rows [][][]byte, store string, opts 
 	})
 	return
 }
-func (s *BadgerStore) BatchInsertKV(rows [][][]byte, store string, opts gostore.ObjectStoreOptions) (keys []string, err error) {
+func (s *BadgerStore) BatchInsertKV(rows [][][]byte, store string, opts common.ObjectStoreOptions) (keys []string, err error) {
 	keys = make([]string, len(rows))
 	err = s.Db.Update(func(txn *badgerdb.Txn) error {
 		for i, row := range rows {

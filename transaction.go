@@ -3,7 +3,7 @@ package badger
 import (
 	"errors"
 
-	badgerdb "github.com/dgraph-io/badger"
+	badgerdb "github.com/dgraph-io/badger/v4"
 )
 
 type BadgerTransaction struct {

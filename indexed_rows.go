@@ -6,13 +6,10 @@ import (
 	"sync"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/osiloke/gostore"
-	// "github.com/osiloke/gostore-contrib/indexer"
+	common "github.com/osiloke/gostore-common"
 )
 
 type NextItem struct {
-	key    string
-	target interface{}
 }
 
 // New Api
@@ -76,7 +73,7 @@ func NewIndexedBadgerRows(name string, total uint64, result *bleve.SearchResult,
 			case item := <-nextItem:
 				logger.Info("current index", "ci", ci, "total", result.Hits.Len())
 				if ci == result.Hits.Len() {
-					b.lastError = gostore.ErrEOF
+					b.lastError = common.ErrEOF
 					logger.Info("break badger rows loop")
 					retrieved <- ""
 					break OUTER
@@ -86,7 +83,7 @@ func NewIndexedBadgerRows(name string, total uint64, result *bleve.SearchResult,
 					logger.Info(fmt.Sprintf("retrieving %s from %s store in badgerdb", h.ID, name))
 					row, err := bs._Get(h.ID, name)
 					if err != nil {
-						if err == gostore.ErrNotFound {
+						if err == common.ErrNotFound {
 							//not found so remove from indexer
 							bs.Indexer.UnIndexDocument(h.ID)
 							retrieved <- ""
@@ -130,7 +127,7 @@ type SyncIndexRows struct {
 
 // Next get next item
 func (s *SyncIndexRows) Next(dst interface{}) (bool, error) {
-	err := gostore.ErrEOF
+	err := common.ErrEOF
 	if int(s.ci) != s.result.Hits.Len() {
 		h := s.result.Hits[s.ci]
 		logger.Info("next row", "key", h.ID, "store", s.name)
@@ -141,7 +138,7 @@ func (s *SyncIndexRows) Next(dst interface{}) (bool, error) {
 				s.ci++
 				return true, nil
 			}
-			if err == gostore.ErrNotFound {
+			if err == common.ErrNotFound {
 				//not found so remove from indexer
 				s.bs.Indexer.UnIndexDocument(h.ID)
 			} else {
@@ -155,7 +152,7 @@ func (s *SyncIndexRows) Next(dst interface{}) (bool, error) {
 
 // NextRaw get next raw item
 func (s *SyncIndexRows) NextRaw() ([]byte, bool) {
-	err := gostore.ErrEOF
+	err := common.ErrEOF
 	if int(s.ci) != s.result.Hits.Len() {
 		h := s.result.Hits[s.ci]
 		logger.Info("NEXT KEY", "id", h.ID, "store", s.name)
@@ -164,7 +161,7 @@ func (s *SyncIndexRows) NextRaw() ([]byte, bool) {
 			s.ci++
 			return row[1], true
 		}
-		if err == gostore.ErrNotFound {
+		if err == common.ErrNotFound {
 			//not found so remove from indexer
 			s.bs.Indexer.UnIndexDocument(h.ID)
 		} else {

@@ -2,7 +2,8 @@ package badger
 
 import (
 	"encoding/json"
-	"github.com/osiloke/gostore"
+
+	common "github.com/osiloke/gostore-common"
 )
 
 // //BadgerRows handles pulling row items in a goroutine
@@ -122,7 +123,7 @@ import (
 // 					}
 // 					itr.Next()
 // 				} else {
-// 					b.lastError = gostore.ErrEOF
+// 					b.lastError = common.ErrEOF
 // 					break OUTER
 // 				}
 // 			}
@@ -141,7 +142,7 @@ import (
 
 // // Next get next item
 // func (s *SyncRows) Next(dst interface{}) (bool, error) {
-// 	err := gostore.ErrEOF
+// 	err := common.ErrEOF
 // 	if s.ci != s.length {
 // 		s.itr.Next()
 // 		if s.itr.Valid() {
@@ -196,7 +197,7 @@ type TransactionRows struct {
 
 // Next get next item
 func (s *TransactionRows) Next(dst interface{}) (bool, error) {
-	err := gostore.ErrEOF
+	err := common.ErrEOF
 	if s.ci < s.length {
 		if err == nil {
 			val := s.entries[s.ci][1]
