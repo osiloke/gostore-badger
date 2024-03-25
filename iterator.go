@@ -1,7 +1,7 @@
 package badger
 
 import (
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v4"
 )
 
 type Iterator struct {

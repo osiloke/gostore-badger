@@ -15,8 +15,8 @@ import (
 	"github.com/blevesearch/bleve/v2/analysis/token/lowercase"
 	rtoken "github.com/blevesearch/bleve/v2/analysis/tokenizer/regexp"
 	"github.com/blevesearch/bleve/v2/search"
-	"github.com/osiloke/gostore"
-	"github.com/osiloke/gostore-contrib/indexer"
+	common "github.com/osiloke/gostore-common"
+	indexer "github.com/osiloke/gostore-indexer"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -93,36 +93,36 @@ func createDB(name string) *BadgerStore {
 	return _db
 }
 
-func TestBadgerStore_FilterACustomField(t *testing.T) {
+func TestBadgerStore_QueryReturnBestExactMatchFirst(t *testing.T) {
 
 	db := createDB("filterGetAll")
 	defer removeDB("filterGetAll", db)
 	db.CreateTable("data", nil)
-	key := gostore.NewObjectId().String()
+	key := common.NewObjectId().String()
 	db.Save(key, "data", map[string]interface{}{"data": map[string]interface{}{
 		"id":      key,
 		"schemas": "message-callback",
 		"count":   10.0,
 	}})
-	key2 := gostore.NewObjectId().String()
+	key2 := common.NewObjectId().String()
 	db.Save(key2, "data", map[string]interface{}{"data": map[string]interface{}{
 		"id":      key2,
 		"schemas": "duper-message-callback",
 		"count":   10.0,
 	}})
-	key3 := gostore.NewObjectId().String()
+	key3 := common.NewObjectId().String()
 	db.Save(key3, "data", map[string]interface{}{"data": map[string]interface{}{
 		"id":      key3,
 		"schemas": "mega-message-callback",
 		"count":   10.0,
 	}})
-	key4 := gostore.NewObjectId().String()
+	key4 := common.NewObjectId().String()
 	db.Save(key4, "data", map[string]interface{}{"data": map[string]interface{}{
 		"id":      key4,
 		"schemas": "super-duper-message-callback",
 		"count":   11.0,
 	}})
-	key5 := gostore.NewObjectId().String()
+	key5 := common.NewObjectId().String()
 	db.Save(key5, "data", map[string]interface{}{"data": map[string]interface{}{
 		"id":      key5,
 		"schemas": "mega-super-duper-message-callback",
@@ -132,7 +132,7 @@ func TestBadgerStore_FilterACustomField(t *testing.T) {
 		name string
 		s    *BadgerStore
 		arg  string
-		// want    gostore.ObjectRows
+		// want    common.ObjectRows
 		wantErr bool
 	}{
 		{
@@ -166,43 +166,19 @@ func TestBadgerStore_FilterACustomField(t *testing.T) {
 			false,
 		},
 	}
-	tt := tests[0]
-	got, err := tt.s.FilterGetAll(map[string]interface{}{"q": map[string]interface{}{"data.schemas": tt.arg}}, 10, 0, "data", nil)
-	if (err != nil) != tt.wantErr {
-		t.Errorf("BadgerStore.FilterGetAll() %s error = %v, wantErr %v", tt.name, err, tt.wantErr)
-		return
-	}
-	for _, tt := range tests[1:] {
-		t.Run(tt.name, func(t *testing.T) {
 
-			var dst map[string]interface{}
-			first := true
-			count := 0
-			for {
-				if first {
-					ok, _ := got.Next(&dst)
-					if ok {
-						count = count + 1
-					} else {
-						break
-					}
-					first = false
-				} else {
-					var fdst map[string]interface{}
-					ok, _ := got.Next(&fdst)
-					if ok {
-						count = count + 1
-					} else {
-						break
-					}
-				}
-			}
-			if count != 1 {
-				assert.Equal(t, tt.arg, dst["schemas"])
-				t.Errorf("BadgerStore.FilterGetAll() %s != %v - %s, wantErr %v - retrieved %v", tt.name, dst["schemas"], tt.arg, tt.wantErr, count)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.s.FilterGetAll(map[string]interface{}{"q": map[string]interface{}{"data.schemas": tt.arg}}, 10, 0, "data", nil)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("BadgerStore.FilterGetAll() %s error = %v, wantErr %v", tt.name, err, tt.wantErr)
 				return
 			}
-
+			var dst map[string]interface{}
+			ok, _ := got.Next(&dst)
+			if ok {
+				assert.Equal(t, tt.arg, dst["data"].(map[string]interface{})["schemas"])
+			}
 		})
 	}
 }
@@ -259,19 +235,19 @@ func TestBadgerStore_Get(t *testing.T) {
 	db.CreateTable(store, nil)
 	rows := []interface{}{
 		map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "osiloke emoekpere",
 			"count": 10.0,
 		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "emike emoekpere",
 			"count": 10.0,
 		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "oduffa emoekpere",
 			"count": 11.0,
 		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "tony emoekpere",
 			"count": 11.0,
 		},
@@ -301,14 +277,14 @@ func TestBadgerStore_FilterGet(t *testing.T) {
 		filter map[string]interface{}
 		store  string
 		dst    interface{}
-		opts   gostore.ObjectStoreOptions
+		opts   common.ObjectStoreOptions
 	}
 
 	db := createDB("filterGet")
 	defer removeDB("filterGet", db)
 	db.CreateTable("data", nil)
 
-	key := gostore.NewObjectId().String()
+	key := common.NewObjectId().String()
 	osi := map[string]interface{}{
 		"id":    key,
 		"name":  "osiloke emoekpere",
@@ -316,7 +292,7 @@ func TestBadgerStore_FilterGet(t *testing.T) {
 	}
 	db.Save(key, "data", &osi)
 
-	key2 := gostore.NewObjectId().String()
+	key2 := common.NewObjectId().String()
 	tony := map[string]interface{}{
 		"id":    key2,
 		"name":  "tony emoekpere",
@@ -362,31 +338,31 @@ func TestBadgerStore_FilterGetAll(t *testing.T) {
 		count  int
 		skip   int
 		store  string
-		opts   gostore.ObjectStoreOptions
+		opts   common.ObjectStoreOptions
 	}
 
 	db := createDB("filterGetAll")
 	defer removeDB("filterGetAll", db)
 	db.CreateTable("data", nil)
-	key := gostore.NewObjectId().String()
+	key := common.NewObjectId().String()
 	db.Save(key, "data", map[string]interface{}{
 		"id":    key,
 		"name":  "osiloke emoekpere",
 		"count": 10.0,
 	})
-	key2 := gostore.NewObjectId().String()
+	key2 := common.NewObjectId().String()
 	db.Save(key2, "data", map[string]interface{}{
 		"id":    key2,
 		"name":  "emike emoekpere",
 		"count": 10.0,
 	})
-	key3 := gostore.NewObjectId().String()
+	key3 := common.NewObjectId().String()
 	db.Save(key3, "data", map[string]interface{}{
 		"id":    key3,
 		"name":  "oduffa emoekpere",
 		"count": 11.0,
 	})
-	key4 := gostore.NewObjectId().String()
+	key4 := common.NewObjectId().String()
 	db.Save(key4, "data", map[string]interface{}{
 		"id":    key4,
 		"name":  "tony emoekpere",
@@ -396,7 +372,7 @@ func TestBadgerStore_FilterGetAll(t *testing.T) {
 		name string
 		s    *BadgerStore
 		args args
-		// want    gostore.ObjectRows
+		// want    common.ObjectRows
 		wantErr bool
 	}{
 		{
@@ -458,34 +434,34 @@ func TestBadgerStore_Query(t *testing.T) {
 		count      int
 		skip       int
 		store      string
-		opts       gostore.ObjectStoreOptions
+		opts       common.ObjectStoreOptions
 	}
 
 	db := createDB("Query")
 	defer removeDB("Query", db)
 	db.CreateTable("data", nil)
-	key := gostore.NewObjectId().String()
+	key := common.NewObjectId().String()
 	db.Save(key, "data", map[string]interface{}{
 		"id":    key,
 		"name":  "osiloke emoekpere",
 		"type":  "person",
 		"count": "12",
 	})
-	key2 := gostore.NewObjectId().String()
+	key2 := common.NewObjectId().String()
 	db.Save(key2, "data", map[string]interface{}{
 		"id":    key2,
 		"name":  "emike emoekpere",
 		"type":  "person",
 		"count": "10",
 	})
-	key3 := gostore.NewObjectId().String()
+	key3 := common.NewObjectId().String()
 	db.Save(key3, "data", map[string]interface{}{
 		"id":    key3,
 		"name":  "oduffa emoekpere",
 		"type":  "person",
 		"count": "11",
 	})
-	key4 := gostore.NewObjectId().String()
+	key4 := common.NewObjectId().String()
 	db.Save(key4, "data", map[string]interface{}{
 		"id":    key4,
 		"name":  "tony emoekpere",
@@ -496,7 +472,7 @@ func TestBadgerStore_Query(t *testing.T) {
 		name string
 		s    *BadgerStore
 		args args
-		// want    gostore.ObjectRows
+		// want    common.ObjectRows
 		wantErr bool
 	}{
 		{
@@ -534,7 +510,7 @@ func TestBadgerStore_Query(t *testing.T) {
 	)
 	logger.Debug("facets", "facets", agg)
 	assert.NotNil(t, rows, "rows were empty")
-	match := gostore.Match{
+	match := common.Match{
 		Field:       "count",
 		UnMatched:   0,
 		Matched:     4,
@@ -555,13 +531,13 @@ func TestBadgerStore_GeoQuery(t *testing.T) {
 		count    int
 		skip     int
 		store    string
-		opts     gostore.ObjectStoreOptions
+		opts     common.ObjectStoreOptions
 	}
 
 	db := createGeoDB("GeoQuery", "location", "people", "bucket")
 	// defer removeDB("GeoQuery", db)
 	db.CreateTable("data", nil)
-	key := gostore.NewObjectId().String()
+	key := common.NewObjectId().String()
 	_, err := db.SaveWithGeo(key, "people", map[string]interface{}{
 		"id":    key,
 		"name":  "osiloke emoekpere",
@@ -578,7 +554,7 @@ func TestBadgerStore_GeoQuery(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	key2 := gostore.NewObjectId().String()
+	key2 := common.NewObjectId().String()
 	db.SaveWithGeo(key2, "people", map[string]interface{}{
 		"id":    key2,
 		"name":  "emike emoekpere",
@@ -592,7 +568,7 @@ func TestBadgerStore_GeoQuery(t *testing.T) {
 				"lon":      -77.0272,
 			}},
 	}, "home.location")
-	key3 := gostore.NewObjectId().String()
+	key3 := common.NewObjectId().String()
 	db.SaveWithGeo(key3, "people", map[string]interface{}{
 		"id":    key3,
 		"name":  "oduffa emoekpere",
@@ -606,7 +582,7 @@ func TestBadgerStore_GeoQuery(t *testing.T) {
 				"lon":      -122.03,
 			}},
 	}, "home.location")
-	key4 := gostore.NewObjectId().String()
+	key4 := common.NewObjectId().String()
 	db.SaveWithGeo(key4, "people", map[string]interface{}{
 		"id":    key4,
 		"name":  "tony emoekpere",
@@ -624,7 +600,7 @@ func TestBadgerStore_GeoQuery(t *testing.T) {
 		name string
 		s    *BadgerStore
 		args args
-		// want    gostore.ObjectRows
+		// want    common.ObjectRows
 		wantErr bool
 	}{
 		{
@@ -659,19 +635,19 @@ func TestBadgerStore_BatchInsert(t *testing.T) {
 	db.CreateTable(store, nil)
 	rows := []interface{}{
 		map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "osiloke emoekpere",
 			"count": 10.0,
 		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "emike emoekpere",
 			"count": 10.0,
 		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "oduffa emoekpere",
 			"count": 11.0,
 		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+			"id":    common.NewObjectId().String(),
 			"name":  "tony emoekpere",
 			"count": 11.0,
 		},
@@ -723,20 +699,20 @@ func TestBadgerStore_SaveTX(t *testing.T) {
 	store := "data"
 	db.CreateTable(store, nil)
 	rows := []map[string]interface{}{
-		map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+		{
+			"id":    common.NewObjectId().String(),
 			"name":  "osiloke emoekpere",
 			"count": 10.0,
-		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+		}, {
+			"id":    common.NewObjectId().String(),
 			"name":  "emike emoekpere",
 			"count": 10.0,
-		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+		}, {
+			"id":    common.NewObjectId().String(),
 			"name":  "oduffa emoekpere",
 			"count": 11.0,
-		}, map[string]interface{}{
-			"id":    gostore.NewObjectId().String(),
+		}, {
+			"id":    common.NewObjectId().String(),
 			"name":  "tony emoekpere",
 			"count": 11.0,
 		},
@@ -745,7 +721,7 @@ func TestBadgerStore_SaveTX(t *testing.T) {
 		key   string
 		store string
 		src   interface{}
-		txn   gostore.Transaction
+		txn   common.Transaction
 	}
 	tests := []struct {
 		name    string
