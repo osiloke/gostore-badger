@@ -2,8 +2,10 @@ package badger
 
 //TODO: Extract methods into functions
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -56,26 +58,37 @@ func (d *IndexedData) Type() string {
 	return "indexed_data"
 }
 
+func runValueLogGC(db *badgerdb.DB) {
+	// at most do 10 value log gc each time.
+	for i := 0; i < 10; i++ {
+		err := db.RunValueLogGC(0.5)
+		if err != nil {
+			if err == badgerdb.ErrNoRewrite {
+				// logger.Info("badger has no value log need gc now")
+			} else {
+				logger.Error("badger run value log gc failed", "err", err)
+			}
+			return
+		}
+		// logger.Info("badger run value log gc success")
+	}
+}
+
 func (s *BadgerStore) setupTicker() {
 	done := make(chan bool)
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(1 * time.Minute)
 	s.done = done
 	s.t = ticker
 	go func() {
 		for range ticker.C {
-		again:
-			err := s.Db.RunValueLogGC(0.7)
-			if err == nil {
-				goto again
-			}
+			runValueLogGC(s.Db)
 		}
 		done <- true
 	}()
 	logger.Debug("setup ticker")
 }
 func NewDBOnly(dbPath string) (s *BadgerStore, err error) {
-	opt := badgerdb.DefaultOptions(dbPath)
-	opt.SyncWrites = true
+	opt := BadgerDefaultOptions(dbPath)
 	db, err := badgerdb.Open(opt)
 	if err != nil {
 		logger.Error("unable to create badgerdb", "err", err.Error(), "opt", opt)
@@ -104,7 +117,7 @@ func New(root string) (s *BadgerStore, err error) {
 		logger.Debug("made badger db", "path", dbPath)
 	}
 
-	opt := badgerdb.DefaultOptions(dbPath)
+	opt := BadgerDefaultOptions(dbPath)
 	// opt.SyncWrites = true
 	db, err := badgerdb.Open(opt)
 	if err != nil {
@@ -127,6 +140,45 @@ func New(root string) (s *BadgerStore, err error) {
 	return
 }
 
+func ListKeys(db *badgerdb.DB, allVersion bool) error {
+	keySize := 0
+	valueSize := 0
+	keyCount := 0
+	err := db.View(func(txn *badgerdb.Txn) error {
+		opts := badgerdb.DefaultIteratorOptions
+		opts.AllVersions = allVersion
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			k := item.Key()
+			err := item.Value(func(v []byte) error {
+				valueSize += len(v)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			keySize += len(k)
+			keyCount++
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	MB := 1048576.0
+	GB := 1073741824.0
+	logger.Debug("finish get total badger db size",
+		"size(GB)", float64(keySize+valueSize)/GB,
+		"all-version", allVersion,
+		"count", keyCount,
+		"key-size(MB)", float64(keySize)/MB,
+		"value-size(GB)", float64(valueSize)/GB,
+	)
+	return nil
+}
+
 // NewWithIndexer New badger store with indexer
 func NewWithIndexer(root string, index indexer.Indexer) (s *BadgerStore, err error) {
 	if _, err := os.Stat(root); os.IsNotExist(err) {
@@ -139,8 +191,7 @@ func NewWithIndexer(root string, index indexer.Indexer) (s *BadgerStore, err err
 		logger.Debug("created badger directory " + dbPath)
 	}
 
-	opt := badgerdb.DefaultOptions(dbPath)
-	opt.SyncWrites = true
+	opt := BadgerDefaultOptions(dbPath)
 	db, err := badgerdb.Open(opt)
 	if err != nil {
 		logger.Error("unable to create badgerdb", "err", err.Error(), "opt", opt)
@@ -446,9 +497,42 @@ func (s *BadgerStore) _Save(key, store string, data []byte) error {
 	return err
 }
 
-// All gets all entries in a store
-// a gouritine which holds open a db view transaction and then listens on
-// a channel for getting the next row itr. There is also a timeout to prevent long running routines
+// All retrieves a specified number of key-value pairs from the BadgerDB store
+// that match a given prefix and skips a specified number of pairs.
+// It returns an ObjectRows interface containing the retrieved key-value pairs
+// or an error if the operation fails.
+//
+// The count parameter determines the maximum number of key-value pairs to retrieve.
+// The skip parameter specifies the number of pairs to skip before retrieving.
+// The store parameter is used to define a prefix for the keys to match.
+//
+// The returned ObjectRows interface provides access to the retrieved key-value pairs.
+// The entries field of the ObjectRows contains a multi-dimensional byte slice, where
+// each element represents a key-value pair. The key is stored in entries[i][0] and the
+// value is stored in entries[i][1].
+// The length field of the ObjectRows indicates the number of retrieved key-value pairs.
+//
+// If no key-value pairs match the specified prefix or if the store does not exist,
+// the function returns common.ErrNotFound.
+//
+// Example usage:
+//
+//	count := 10
+//	skip := 0
+//	store := "example"
+//	rows, err := dataStore.All(count, skip, store)
+//	if err != nil {
+//	  fmt.Println("Error retrieving data:", err)
+//	  return
+//	}
+//	for i := 0; i < rows.Length(); i++ {
+//	  key := rows.Entry(i)[0]
+//	  value := rows.Entry(i)[1]
+//	  fmt.Printf("Key: %s, Value: %s\n", key, value)
+//	}
+//
+// Note: Make sure to handle errors appropriately when using the returned ObjectRows
+// and ensure the BadgerDB database is properly initialized and closed.
 func (s *BadgerStore) All(count int, skip int, store string) (common.ObjectRows, error) {
 	var objs [][][]byte
 	err := s.Db.View(func(txn *badgerdb.Txn) error {
@@ -456,24 +540,39 @@ func (s *BadgerStore) All(count int, skip int, store string) (common.ObjectRows,
 		opts.PrefetchSize = count / 2
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		for it.Rewind(); it.Valid(); it.Next() {
+
+		var skipCount int
+		var rowCount int
+		prefix := []byte(s.keyForTable(store))
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			if skipCount < skip {
+				skipCount++
+				continue
+			}
+
 			item := it.Item()
-			k := item.Key()
-			obj := make([][]byte, 2)
-			// logger.Debug("key + " + string(k) + " retrieved")
-			err := item.Value(func(v []byte) error {
-				obj[1] = append([]byte{}, v...)
-				return nil
-			})
+			k := item.KeyCopy(nil)
+			v, err := item.ValueCopy(nil)
 			if err != nil {
 				return err
 			}
-			objs = append(objs, obj)
+
+			obj := make([][]byte, 2)
 			obj[0] = make([]byte, len(k))
 			copy(obj[0], k)
+			obj[1] = make([]byte, len(v))
+			copy(obj[1], v)
+			objs = append(objs, obj)
+
+			rowCount++
+			if rowCount == count {
+				break
+			}
 		}
+
 		return nil
 	})
+
 	if len(objs) > 0 {
 		return &TransactionRows{entries: objs, length: len(objs)}, err
 	}
@@ -515,7 +614,63 @@ func (s *BadgerStore) Cursor() (common.Iterator, error) {
 }
 
 func (s *BadgerStore) AllCursor(store string) (common.ObjectRows, error) {
-	return nil, common.ErrNotImplemented
+	rows := common.NewCursorRows()
+	go func(rows *common.CursorRows) {
+		defer func() {
+			rows.Done() <- true
+		}()
+		err := s.Db.View(func(txn *badgerdb.Txn) error {
+			opts := badgerdb.DefaultIteratorOptions
+			opts.PrefetchSize = 10
+			it := txn.NewIterator(opts)
+			defer it.Close()
+
+			prefix := []byte(s.keyForTable(store))
+			it.Seek(prefix)
+		OUTER:
+			for {
+				select {
+				case <-rows.Exit():
+					break OUTER
+				case <-rows.NextChan():
+				NEXTAGAIN:
+					if !it.Valid() || !it.ValidForPrefix(prefix) {
+						fmt.Println("invalid")
+						continue
+					}
+					item := it.Item()
+					k := item.KeyCopy(nil)
+					v, err := item.ValueCopy(nil)
+					if err != nil {
+						return err
+					}
+
+					obj := make([][]byte, 2)
+					obj[0] = make([]byte, len(k))
+					copy(obj[0], k)
+					unsplit := bytes.SplitN(k, []byte("|"), -1)
+					k = unsplit[1]
+					sn := string(bytes.SplitN(unsplit[0], []byte("$"), -1)[1])
+
+					if sn == store {
+						obj[1] = make([]byte, len(v))
+						copy(obj[1], v)
+						rows.OnNext([][]byte{k, v})
+					} else {
+						it.Next()
+						goto NEXTAGAIN
+					}
+					it.Next()
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			logger.Error("cursor rows for "+store+" failed", "err", err.Error())
+		}
+	}(rows)
+	return rows, nil
 }
 
 func (s *BadgerStore) Stream() (*common.CursorRows, error) {
@@ -836,12 +991,11 @@ func (s *BadgerStore) FilterGetTX(filter map[string]interface{}, store string, d
 		query := indexer.GetQueryString(store, query)
 		res, err := s.Indexer.QueryWithOptions(query, 1, 0, true, []string{}, indexer.OrderRequest([]string{"-_score", "-_id"}))
 		if err != nil {
-			logger.Info("FilterGetTX failed", "query", query)
+			logger.Error("FilterGetTX failed", "query", query)
 			return err
 		}
-		logger.Info("FilterGetTX success", "query", query)
 		if res.Total == 0 {
-			logger.Info("FilterGetTX empty result", "result", res.String())
+			logger.Error("FilterGetTX empty result", "result", res.String())
 			return common.ErrNotFound
 		}
 		key := res.Hits[0].ID
@@ -1010,7 +1164,8 @@ func (s *BadgerStore) GeoQuery(lon, lat float64, distance string, query map[stri
 func (s *BadgerStore) FilterDelete(query map[string]interface{}, store string, opts common.ObjectStoreOptions) error {
 	logger.Info("FilterDelete", "filter", query, "store", store)
 	count := 1000
-	res, err := s.Indexer.QueryWithOptions(indexer.GetQueryString(store, query), count, 0, true, []string{})
+	res, err := s.Indexer.Query(indexer.GetQueryString(store, query))
+	res, err = s.Indexer.QueryWithOptions(indexer.GetQueryString(store, query), count, 0, true, []string{})
 	if err == nil {
 		if res.Total == 0 {
 			return common.ErrNotFound
@@ -1031,6 +1186,8 @@ func (s *BadgerStore) FilterDelete(query map[string]interface{}, store string, o
 
 func (s *BadgerStore) FilterCount(filter map[string]interface{}, store string, opts common.ObjectStoreOptions) (int64, error) {
 	if query, ok := filter["q"].(map[string]interface{}); ok {
+		q := indexer.GetQueryString(store, query)
+		logger.Info("FilterCount", "Store", store, "query", q)
 		res, err := s.Indexer.Query(indexer.GetQueryString(store, query))
 		if err != nil {
 			return 0, err
@@ -1096,6 +1253,37 @@ func (s *BadgerStore) BatchFilterDelete(filter []map[string]interface{}, store s
 func (s *BadgerStore) BatchInsert(data []interface{}, store string, opts common.ObjectStoreOptions) (keys []string, err error) {
 	keys = make([]string, len(data))
 	b := s.Indexer.BatchIndex()
+	// err = s.Db.Update(func(txn *badgerdb.Txn) error {
+	// 	for i, src := range data {
+	// 		var key string
+	// 		if _v, ok := src.(map[string]interface{}); ok {
+	// 			if k, ok := _v["id"].(string); ok {
+	// 				key = k
+	// 			} else {
+	// 				key = common.NewObjectId().String()
+	// 				_v["id"] = key
+	// 			}
+	// 		} else if _v, ok := src.(HasID); ok {
+	// 			key = _v.GetId()
+	// 		} else {
+	// 			key = common.NewObjectId().String()
+	// 		}
+	// 		data, err := json.Marshal(src)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		storeKey := []byte(s.keyForTableId(store, key))
+	// 		err = txn.Set(storeKey, data)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		indexedData := IndexedData{store, src}
+	// 		logger.Debug("BatchInsert", "row", indexedData)
+	// 		b.Index(key, indexedData)
+	// 		keys[i] = key
+	// 	}
+	// 	return s.Indexer.Batch(b)
+	// })
 	txn := s.Db.NewTransaction(true)
 	defer txn.Discard()
 	for i, src := range data {
